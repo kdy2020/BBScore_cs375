@@ -1,115 +1,128 @@
-%% BBScore Alignment Analysis Pipeline (Person C)
-% Goal: Compute layer-wise alignment profiles, extract summary stats, and visualize.
-% Inputs: Extracted hidden states/scores (DeepSeek-R1, Llama-3, GPT-2).
-% Outputs: Relative Peak Depth, Peak Magnitude, AUC, and Comparison Plots.
+%% BBScore Final Analysis (Person C)
+% Generates 4 separate figures: Profile Curves, Rel Depth, Peak Mag, and AUC Area
 
 clear; clc; close all;
 
-%% 1. Parameters and Dummy Data Generation
-% In the real scenario, load .mat or .csv files provided by Person A/B.
+%% 1. Setup & Dummy Data Generation
 model_names = {'DeepSeek-R1-8B', 'Llama-3-8B', 'GPT-2-XL'};
-num_layers = [32, 32, 48]; % Total layers for each model
-num_folds = 5;             % Number of Cross-validation folds
-noise_ceiling = 0.8;       % Hypothetical noise ceiling for normalization
+num_layers = [32, 32, 48]; 
+num_folds = 5;
+noise_ceiling = 0.82; 
 
-% Generating dummy data for testing (simulating brain alignment scores)
-% Structure: scores{model_idx} = (layers x folds)
-scores = cell(1, length(model_names));
-
-for m = 1:length(model_names)
-    L = num_layers(m);
-    % Simulate a brain-alignment curve using a Gaussian-like shape
-    x = linspace(0, 1, L)';
-    peak_loc = 0.35 + rand()*0.2; % Randomize peak location per model
-    base_curve = exp(-(x - peak_loc).^2 / 0.04) * 0.65; 
-    
-    % Add Gaussian noise to each CV fold
-    scores{m} = base_curve + randn(L, num_folds) * 0.04;
-end
-
-%% 2. Metrics Extraction and Normalization
 results = struct();
+% Colors for each model (Blue, Orange, Yellow)
+colors = [0 0.447 0.741; 0.85 0.325 0.098; 0.929 0.694 0.125]; 
 
 for m = 1:length(model_names)
-    raw_scores = scores{m};
     L = num_layers(m);
     
-    % (1) Noise Ceiling Normalization (Predictivity / Noise Ceiling)
-    norm_data = raw_scores / noise_ceiling;
+    % --- DUMMY DATA ---
+    x_raw = linspace(0, 1, L)';
+    peak_loc = 0.3 + (m*0.15); % Different peak locations
+    raw_scores = (exp(-(x_raw - peak_loc).^2 / 0.08) * 0.5) + randn(L, num_folds)*0.02;
     
-    % (2) Compute Mean Profile and Standard Error (SEM) across folds
-    mean_profile = mean(norm_data, 2);
-    sem_profile = std(norm_data, 0, 2) / sqrt(num_folds);
+    % (A) Normalization
+    norm_scores = raw_scores / noise_ceiling;
+    mean_curve = mean(norm_scores, 2);
+    sem_curve = std(norm_scores, 0, 2) / sqrt(num_folds);
     
-    % (3) Extract Key Summary Statistics
-    [peak_mag, peak_idx] = max(mean_profile);
-    % Relative Peak Depth: Normalized position (0 = input, 1 = output)
-    rel_peak_depth = (peak_idx - 1) / (L - 1); 
-    % Area Under the Curve (AUC) using trapezoidal numerical integration
-    area_under_curve = trapz(linspace(0, 1, L), mean_profile);
+    % (B) Extract metrics
+    [p_mag, p_idx] = max(mean_curve);
+    rel_depth = (p_idx - 1) / (L - 1); 
+    auc_val = trapz(linspace(0, 1, L), mean_curve); 
     
-    % Store results in a structure
+    % Store
     results(m).name = model_names{m};
-    results(m).layers = L;
-    results(m).mean_curve = mean_profile;
-    results(m).sem = sem_profile;
-    results(m).peak_mag = peak_mag;
-    results(m).rel_depth = rel_peak_depth;
-    results(m).auc = area_under_curve;
+    results(m).x = linspace(0, 1, L)';
+    results(m).mean = mean_curve; 
+    results(m).sem = sem_curve;
+    results(m).rel_depth = rel_depth;
+    results(m).peak_mag = p_mag; 
+    results(m).auc = auc_val;
 end
 
-%% 3. Visualization Pipeline
-figure('Name', 'BBScore Layer-wise Analysis', 'Position', [100, 100, 1100, 500]);
-
-% --- Subplot 1: Layer-wise Alignment Profiles ---
-subplot(1, 2, 1); hold on;
-colors = lines(length(model_names));
+%% --- FIGURE 1: Layer-wise Profile Curves (with Peak Stars) ---
+% Includes: Curves, SEM shading, AUC shaded areas, Peak Stars, and AUC values
+figure; hold on;
+set(gcf, 'Color', 'w', 'Position', [100, 100, 850, 600]);
 
 for m = 1:length(model_names)
-    L = results(m).layers;
-    % X-axis: Relative depth (0 to 1) to compare models of different depths
-    x_axis = linspace(0, 1, L); 
+    x_vec = results(m).x(:)';
+    mean_vec = results(m).mean(:)';
+    sem_vec = results(m).sem(:)';
     
-    % Draw SEM Shading (Shaded Error Bars)
-    fill([x_axis, fliplr(x_axis)], ...
-         [results(m).mean_curve' + results(m).sem', fliplr(results(m).mean_curve' - results(m).sem')], ...
-         colors(m,:), 'FaceAlpha', 0.15, 'EdgeColor', 'none', 'HandleVisibility', 'off');
+    % 1. AUC Shaded Area (Very translucent)
+    fill([x_vec, fliplr(x_vec)], [mean_vec, zeros(size(mean_vec))], ...
+         colors(m,:), 'FaceAlpha', 0.1, 'EdgeColor', 'none', 'HandleVisibility', 'off');
     
-    % Plot Main Average Alignment Curve
-    plot(x_axis, results(m).mean_curve, 'Color', colors(m,:), 'LineWidth', 2.5, 'DisplayName', results(m).name);
+    % 2. SEM Shading (Uncertainty across folds)
+    fill([x_vec, fliplr(x_vec)], [(mean_vec + sem_vec), fliplr(mean_vec - sem_vec)], ...
+         colors(m,:), 'FaceAlpha', 0.2, 'EdgeColor', 'none', 'HandleVisibility', 'off');
+     
+    % 3. Main Alignment Curve
+    % Note: AUC is included in the Legend here
+    plot(x_vec, mean_vec, 'Color', colors(m,:), 'LineWidth', 3, ...
+         'DisplayName', sprintf('%s (AUC: %.3f)', results(m).name, results(m).auc));
     
-    % Mark the Peak Location
-    plot(results(m).rel_depth, results(m).peak_mag, 'p', 'MarkerSize', 10, ...
-         'MarkerEdgeColor', colors(m,:), 'MarkerFaceColor', colors(m,:), 'HandleVisibility', 'off');
+    % 4. Peak Marker (Star at the maximum alignment)
+    plot(results(m).rel_depth, results(m).peak_mag, 'p', 'MarkerSize', 15, ...
+        'MarkerEdgeColor', colors(m,:), 'MarkerFaceColor', colors(m,:), 'HandleVisibility', 'off');
+
+    % 5. Text Annotation for AUC (Directly on the plot)
+    % This stacks the AUC values in the upper left corner in their respective colors
+    text(0.02, 1 - (m * 0.05), sprintf('AUC (%s): %.3f', results(m).name, results(m).auc), ...
+         'Color', colors(m,:), 'FontSize', 11, 'FontWeight', 'bold', 'Units', 'normalized');
 end
+
+% Styling Figure
+
+title('Integrated Layer-wise Brain Alignment Profile', 'FontSize', 14);
+xlabel('Relative Layer Depth (Normalized 0 \rightarrow 1)', 'FontSize', 12);
+ylabel('Normalized Predictivity (r / Noise Ceiling)', 'FontSize', 12);
+
+% Reference line for human performance
+yline(1.0, '--k', 'Noise Ceiling', 'LabelVerticalAlignment', 'bottom', 'Alpha', 0.5);
 
 grid on; box on;
-xlabel('Relative Layer Depth (Normalized 0-1)');
-ylabel('Normalized Brain Predictivity (r / Noise Ceiling)');
-title('Layer-wise Brain Alignment Profiles');
-legend('Location', 'best', 'FontSize', 10);
-ylim([0 1]);
+legend('Location', 'northeast', 'FontSize', 10);
+ylim([0 1.25]); % Increased slightly to fit text annotations
+hold off;
+%% --- FIGURE 2: Relative Peak Depth ---
+figure;
+set(gcf, 'Color', 'w', 'Position', [150, 150, 500, 400]);
+b2 = bar([results.rel_depth], 'FaceColor', 'flat');
+b2.CData = colors;
+set(gca, 'XTickLabel', model_names);
+title('2. Relative Peak Depth');
+ylabel('Relative Depth (0=Input, 1=Output)'); ylim([0 1]); grid on;
 
-% --- Subplot 2: Relative Peak Depth Comparison ---
-subplot(1, 2, 2);
-rel_depth_values = [results.rel_depth];
-h_bar = bar(rel_depth_values, 'FaceColor', 'flat');
-h_bar.CData = colors; % Set bar colors to match line plot
+%% --- FIGURE 3: Peak Magnitude ---
+figure
+set(gcf, 'Color', 'w', 'Position', [200, 200, 500, 400]);
+b3 = bar([results.peak_mag], 'FaceColor', 'flat');
+b3.CData = colors;
+set(gca, 'XTickLabel', model_names);
+title('3. Peak Alignment Magnitude');
+ylabel('Max Brain-Alignment Score'); ylim([0 1]); grid on;
 
-set(gca, 'XTickLabel', model_names, 'FontSize', 9);
-ylabel('Relative Peak Depth (0=Early, 1=Late)');
-title('Comparison of Peak Brain-Alignment Depth');
-grid on;
-ylim([0 1]); % Normalized scale
+%% --- FIGURE 4: AUC Visualization (Filled Area under Profile) ---
+figure; hold on;
+set(gcf, 'Color', 'w', 'Position', [250, 250, 700, 500]);
 
-%% 4. Statistical Summary Output to Console
-fprintf('\n===========================================================\n');
-fprintf('                BBScore Analysis Summary\n');
-fprintf('===========================================================\n');
-fprintf('%-18s | %-12s | %-12s | %-8s\n', 'Model Name', 'Rel. Depth', 'Peak Mag.', 'AUC');
-fprintf('-----------------------------------------------------------\n');
 for m = 1:length(model_names)
-    fprintf('%-18s | %-12.4f | %-12.4f | %-8.4f\n', ...
-        results(m).name, results(m).rel_depth, results(m).peak_mag, results(m).auc);
+    x_vec = results(m).x(:)';
+    mean_vec = results(m).mean(:)';
+    
+    % Fill the area under the curve
+    fill([x_vec, fliplr(x_vec)], ...
+         [mean_vec, zeros(size(mean_vec))], ...
+         colors(m,:), 'FaceAlpha', 0.2, 'EdgeColor', colors(m,:), 'LineWidth', 1.5);
+     
+    % AUC Text labels
+    text_y_pos = 0.9 - (m * 0.06); % Adjusted for visibility
+    text(0.05, text_y_pos, sprintf('%s AUC = %.3f', results(m).name, results(m).auc), ...
+         'Color', colors(m,:), 'FontSize', 11, 'FontWeight', 'bold', 'Units', 'normalized');
 end
-fprintf('===========================================================\n');
+title('4. Overall Alignment Area (AUC)');
+xlabel('Relative Layer Depth'); ylabel('Normalized Predictivity');
+grid on; hold off;
