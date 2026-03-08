@@ -3,7 +3,7 @@
 % This script computes brain alignment scores from model activations and generates plots.
 clear; clc; close all;
 %% 1. Setup & Actual Regression Pipeline
-model_names = {'GPT-2-XL', 'Llama-3-8B', 'DeepSeek-R1-8B'};
+model_names = {'DeepSeek-R1-8B', 'Llama-3-8B', 'GPT-2-XL'};
 num_layers = [32, 32, 48]; 
 num_folds = 5;
 noise_ceiling = 0.82; 
