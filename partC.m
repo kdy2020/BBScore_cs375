@@ -120,10 +120,16 @@ for m = 1:num_models
             % vectorized calculation for final results
             Y_std = zscore(Y);
             Y_pred_all_std = zscore(Y_pred_all);
-            r_voxels = mean(Y_pred_all_std .* Y_std, 1)'; % Column-wise correlation
+            
+            % Compute correlation per voxel (1 x NumVoxels)
+            r_voxels = mean(Y_pred_all_std .* Y_std, 1); 
+            
+            % Force both to be column vectors using (:) to avoid dimension mismatch
+            r_voxels = max(r_voxels(:), 0); 
+            curr_ceil = ceil_clean(:);
             
             % Normalize by noise ceiling and average across voxels
-            layer_scores_for_subj(l) = mean(r_voxels ./ ceil_clean, 'omitnan');
+            layer_scores_for_subj(l) = mean(r_voxels ./ curr_ceil, 'omitnan');
         end 
         subject_layer_scores(s, :) = layer_scores_for_subj;
     end
