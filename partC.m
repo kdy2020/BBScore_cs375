@@ -71,16 +71,18 @@ for m = 1:num_models
         layer_scores_for_subj = zeros(L, 1);
         
         % Parallel processing of layers for speed
+        % Parallel processing of layers for speed
         parfor l = 1:L
             % Extract layer features and apply Z-scoring and L2 normalization
             X_full = squeeze(model_features(l, :, :)); 
             X = zscore(X_full); 
             row_norms = sqrt(sum(X.^2, 2));
-            row_norms(row_norms == 0) = 1;
+            row_norms(row_norms == 0) = 1; % Avoid division by zero
             X = X ./ row_norms;
             
             Y = brain_clean;
-            Y_pred_all = zeros(size(Y)); 
+            % [Fixed] Initialize prediction matrix inside parfor to match current subject's voxel count
+            Y_pred_all = zeros(num_samples, num_voxels); 
             
             for f = 1:num_folds
                 test_idx = (cv_indices == f);
@@ -89,23 +91,22 @@ for m = 1:num_models
                 X_tr = X(train_idx, :); Y_tr = Y(train_idx, :);
                 X_te = X(test_idx, :);  Y_te = Y(test_idx, :);
                 
+                % Singular Value Decomposition (SVD) for efficient Ridge Regression
                 [U, S, V] = svd(X_tr, 'econ');
                 s_vals = diag(S);
                 
                 best_lam_r = -inf;
                 best_Y_te_pred = zeros(size(Y_te));
                 
-                % Pre-normalize validation data (Once outside the lambda loop for efficiency)
+                % [Optimization] Pre-normalize validation data for faster correlation calculation
                 Y_te_std = zscore(Y_te); 
                 
                 for lam = lambda_list
+                    % Apply Ridge shrinkage in the SVD space
                     d = s_vals ./ (s_vals.^2 + lam);
                     curr_Y_pred = X_te * (V * (diag(d) * (U' * Y_tr)));
                     
-                    % [Optimization] Fast correlation calculation using
-                    % vector operations directly instead of corr(A,B).
-                    %Multiplying z-scored matrices is mathematically
-                    %equivalent to diag(corr()) but hundreds of times faster and memory-efficient.
+                    % [Optimization] Fast vectorized correlation (equivalent to diag(corr))
                     curr_Y_pred_std = zscore(curr_Y_pred);
                     r_val = mean(mean(curr_Y_pred_std .* Y_te_std, 1), 'omitnan');
                     
@@ -117,20 +118,16 @@ for m = 1:num_models
                 Y_pred_all(test_idx, :) = best_Y_te_pred;
             end
             
-            % vectorized calculation for final results
+            % [Fixed] Ensure vectorized correlation and ceiling normalization match dimensions
             Y_std = zscore(Y);
             Y_pred_all_std = zscore(Y_pred_all);
             
-            % Compute correlation per voxel (1 x NumVoxels)
+            % Compute final correlation per voxel
             r_voxels = mean(Y_pred_all_std .* Y_std, 1); 
             
-            % Force both to be column vectors using (:) to avoid dimension mismatch
-            r_voxels = max(r_voxels(:), 0); 
-            curr_ceil = ceil_clean(:);
-            
-            % Normalize by noise ceiling and average across voxels
-            layer_scores_for_subj(l) = mean(r_voxels ./ curr_ceil, 'omitnan');
-        end 
+            % Normalize by noise ceiling and compute average score across all valid voxels
+            layer_scores_for_subj(l) = mean(r_voxels(:) ./ ceil_clean(:), 'omitnan');
+        end
         subject_layer_scores(s, :) = layer_scores_for_subj;
     end
     
