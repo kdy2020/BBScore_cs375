@@ -181,17 +181,13 @@ for m = 1:num_models
     m_v = results(m).mean'; 
     s_v = results(m).sem';
     
-    % 레전드에 표시될 텍스트 생성 (예: GPT-2-XL (AUC: 0.1234))
     legend_text = sprintf('%s (AUC: %.4f)', results(m).name, results(m).auc);
     
-    % 오차 범위 (Shadow) - HandleVisibility off로 해서 레전드에서 제외
     fill([x_v, fliplr(x_v)], [(m_v+s_v), fliplr(m_v-s_v)], colors(m,:), ...
         'FaceAlpha', 0.2, 'EdgeColor', 'none', 'HandleVisibility', 'off');
-    
-    % 메인 선 - DisplayName에 AUC 포함된 텍스트 적용
+
     plot(x_v, m_v, 'Color', colors(m,:), 'LineWidth', 2.5, 'DisplayName', legend_text);
-    
-    % 피크 지점 (별표) - HandleVisibility off
+
     plot(results(m).rel_depth, results(m).peak_mag, 'p', 'MarkerSize', 12, ...
         'MarkerFaceColor', colors(m,:), 'MarkerEdgeColor', 'k', 'HandleVisibility', 'off');
 end
@@ -201,7 +197,7 @@ xlabel('Relative Layer Depth');
 ylabel('Normalized Predictivity (r/ceiling)');
 ylim([0 1.0]); 
 grid on; 
-legend('Location', 'northeast', 'FontSize', 10); % 레전드 위치 및 폰트 조절
+legend('Location', 'northeast', 'FontSize', 10);
 
 saveas(fig1, fullfile(base_dir, 'Figure1_Final_Profile_with_AUC.png'));
 
