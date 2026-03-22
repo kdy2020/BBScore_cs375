@@ -158,6 +158,7 @@ for m = 1:num_models
     end
     
     results(m).mean = mean(subject_layer_scores, 1)';
+    results(m).sbj = subject_layer_scores;
     results(m).sem = std(subject_layer_scores, 0, 1)' / sqrt(num_subjects);
     results(m).x = linspace(0, 1, L)';
     [results(m).peak_mag, p_idx] = max(results(m).mean);
@@ -173,8 +174,13 @@ fprintf('\nSuccess! Results saved in %s\n', base_dir);
 
 set(0, 'DefaultFigureRenderer', 'painters');
 
-% --- Figure 1: Profile (Legend with AUC) ---
-fig1 = figure('Visible', 'off','Color', 'w', 'Position', [100, 100, 900, 600]); hold on;
+font_size_axis  = 14; % 
+font_size_label = 18; % x, y
+font_size_title = 20;
+font_size_legend = 13;
+
+% --- Figure 1: Profile ---
+fig1 = figure('Color', 'w', 'Position', [100, 100, 900, 600]); hold on;
 
 for m = 1:num_models
     x_v = results(m).x'; 
@@ -185,38 +191,183 @@ for m = 1:num_models
     
     fill([x_v, fliplr(x_v)], [(m_v+s_v), fliplr(m_v-s_v)], colors(m,:), ...
         'FaceAlpha', 0.2, 'EdgeColor', 'none', 'HandleVisibility', 'off');
+    
+    plot(x_v, m_v, 'Color', colors(m,:), 'LineWidth', 3, 'DisplayName', legend_text);
 
-    plot(x_v, m_v, 'Color', colors(m,:), 'LineWidth', 2.5, 'DisplayName', legend_text);
-
-    plot(results(m).rel_depth, results(m).peak_mag, 'p', 'MarkerSize', 12, ...
-        'MarkerFaceColor', colors(m,:), 'MarkerEdgeColor', 'k', 'HandleVisibility', 'off');
+    plot(results(m).rel_depth, results(m).peak_mag, 'p', 'MarkerSize', 15, ...
+        'MarkerFaceColor', colors(m,:), 'MarkerEdgeColor', 'none', 'HandleVisibility', 'off');
 end
 
-title('Layer-wise Brain Alignment Profile'); 
-xlabel('Relative Layer Depth'); 
-ylabel('Normalized Predictivity (r/ceiling)');
+
+set(gca, 'FontSize', font_size_axis, ...  
+         'Box', 'off', ...              
+         'XGrid', 'off', 'YGrid', 'off', ...
+         'LineWidth', 1.2);          
+
+title('Layer-wise Brain Alignment Profile', 'FontSize', font_size_title); 
+xlabel('Relative Layer Depth', 'FontSize', font_size_label); 
+ylabel('Normalized Predictivity (r/ceiling)', 'FontSize', font_size_label);
+
 ylim([0 1.0]); 
-grid on; 
-legend('Location', 'northeast', 'FontSize', 10);
+legend('Location', 'northeast', 'FontSize', font_size_legend, 'Box', 'off');
 
 saveas(fig1, fullfile(base_dir, 'Figure1_Final_Profile_with_AUC.png'));
 
-%% --- Figure 2: Relative Peak Depth  ---
-fig2 = figure('Visible', 'off', 'Color', 'w', 'Position', [100, 100, 600, 500]);
-b2 = bar([results.rel_depth], 'FaceColor', 'flat', 'EdgeColor', 'k');
+%% --- Figure 2: Relative Peak Depth with SE ---
+fig2 = figure('Color', 'w', 'Position', [100, 100, 600, 500]); hold on;
+
+all_depths = zeros(num_subjects, num_models);
+for m = 1:num_models
+    [~, p_idx] = max(results(m).sbj, [], 2); % peak index
+    all_depths(:, m) = (p_idx - 1) / (size(results(m).sbj, 2) - 1); % relative depth 
+end
+
+mean_depths = mean(all_depths, 1);
+se_depths = std(all_depths, 0, 1) / sqrt(num_subjects); % Standard Error
+
+b2 = bar(mean_depths, 'FaceColor', 'flat', 'EdgeColor', 'none', 'BarWidth', 0.6);
 for k = 1:num_models, b2.CData(k,:) = colors(k,:); end
-set(gca, 'XTickLabel', model_names, 'TickLabelInterpreter', 'none');
-ylabel('Relative Depth (0-1)'); title('Relative Peak Alignment Depth');
-ylim([0 1.0]); grid on;
+
+errorbar(1:num_models, mean_depths, se_depths, 'k', 'linestyle', 'none', 'LineWidth', 1.5, 'CapSize', 10);
+
+set(gca, 'XTick', 1:num_models, ... 
+         'XTickLabel', model_names,'XTickLabel', model_names, 'TickLabelInterpreter', 'none', ...
+         'FontSize', font_size_axis, 'Box', 'off', ...
+         'XGrid', 'off', 'YGrid', 'off');
+ylabel('Relative Depth (0-1)', 'FontSize', font_size_label); 
+title('Relative Peak Alignment Depth', 'FontSize', font_size_title);
+ylim([0 1.0]); 
+
 saveas(fig2, fullfile(base_dir, 'Figure2_Peak_Depth.png'));
 
-% --- Figure 3: Peak Magnitude  ---
-fig3 = figure('Visible', 'off', 'Color', 'w', 'Position', [100, 100, 600, 500]);
-b3 = bar([results.peak_mag], 'FaceColor', 'flat', 'EdgeColor', 'k');
-for k = 1:num_models, b3.CData(k,:) = colors(k,:); end
-set(gca, 'XTickLabel', model_names, 'TickLabelInterpreter', 'none');
-ylabel('Max Predictivity (r/Ceiling)'); title('Peak Alignment Magnitude');
-ylim([0 1.0]); grid on;
-saveas(fig3, fullfile(base_dir, 'Figure3_Peak_Magnitude.png'));
+%% --- Figure 3: Peak Magnitude with SE ---
+fig3 = figure('Color', 'w', 'Position', [100, 100, 600, 500]); hold on;
 
-fprintf('\nSuccess! All Figures (1, 2, 3) saved with AUC legends.\n');
+all_mags = zeros(num_subjects, num_models);
+for m = 1:num_models
+    all_mags(:, m) = max(results(m).sbj, [], 2);
+end
+
+mean_mags = mean(all_mags, 1);
+se_mags = std(all_mags, 0, 1) / sqrt(num_subjects); % Standard Error
+
+b3 = bar(mean_mags, 'FaceColor', 'flat', 'EdgeColor', 'none', 'BarWidth', 0.6);
+for k = 1:num_models, b3.CData(k,:) = colors(k,:); end
+
+errorbar(1:num_models, mean_mags, se_mags, 'k', 'linestyle', 'none', 'LineWidth', 1.5, 'CapSize', 10);
+
+set(gca,'XTick', 1:num_models, ... 
+         'XTickLabel', model_names, 'XTickLabel', model_names, 'TickLabelInterpreter', 'none', ...
+         'FontSize', font_size_axis, 'Box', 'off', ...
+         'XGrid', 'off', 'YGrid', 'off');
+ylabel('Max Predictivity (r/Ceiling)', 'FontSize', font_size_label); 
+title('Peak Alignment Magnitude', 'FontSize', font_size_title);
+ylim([0 1.0]); 
+
+saveas(fig3, fullfile(base_dir, 'Figure3_Peak_Magnitude.png'));
+%%
+fprintf('\n--- T-test Analysis for Figure 2 & 3 (N=8) ---\n');
+
+% 1.(Peak Depth & Magnitude)
+sbj_peak_depths = zeros(num_subjects, num_models);
+sbj_peak_mags = zeros(num_subjects, num_models);
+
+for m = 1:num_models
+    [mags, idxs] = max(results(m).sbj, [], 2);
+    sbj_peak_mags(:, m) = mags;
+    % Relative Depth
+    sbj_peak_depths(:, m) = (idxs - 1) / (size(results(m).sbj, 2) - 1);
+end
+
+% 2. T-test 
+pairs = [1 2; 1 3; 2 3]; % GPT-8B, GPT-14B, 8B-14B
+pair_names = {'GPT vs 8B', 'GPT vs 14B', '8B vs 14B'};
+
+fprintf('\n[Figure 3: Peak Magnitude T-test]\n');
+for i = 1:3
+    [h, p] = ttest(sbj_peak_mags(:, pairs(i,1)), sbj_peak_mags(:, pairs(i,2)));
+    fprintf('%s: p = %.4f %s\n', pair_names{i}, p, char(repmat('*',1,p<0.05)));
+end
+
+fprintf('\n[Figure 2: Peak Depth T-test]\n');
+for i = 1:3
+    [h, p] = ttest(sbj_peak_depths(:, pairs(i,1)), sbj_peak_depths(:, pairs(i,2)));
+    fprintf('%s: p = %.4f %s\n', pair_names{i}, p, char(repmat('*',1,p<0.05)));
+end
+%% 5. Statistical Analysis: Participant-wise AUC & ANOVA (No Correction)
+fprintf('\n--- Running Statistical Analysis (N=8) ---\n');
+for m = 1:num_models
+    results(m).auc_sbj = trapz(results(m).x, results(m).sbj, 2); 
+    results(m).peak_sbj = max(results(m).sbj, [], 2);
+end
+
+% ANOVA
+VarNames = {'GPT2', 'DSeek8B', 'DSeek14B'};
+auc_table = array2table([results(1).auc_sbj, results(2).auc_sbj, results(3).auc_sbj], ...
+    'VariableNames', VarNames);
+Meas = table([1 2 3]', 'VariableNames', {'Models'});
+rm_auc = fitrm(auc_table, 'GPT2-DSeek14B ~ 1', 'WithinDesign', Meas);
+ranovatbl = ranova(rm_auc);
+p_anova = ranovatbl.pValue(1); 
+
+fprintf('Overall ANOVA p-value: %.4f\n', p_anova);
+
+if p_anova < 0.05
+    fprintf('Significant difference found. Running Post-hoc (Fisher''s LSD - No Correction)...\n');
+
+    try
+        posthoc = multcompare(rm_auc, 'Models', 'ComparisonType', 'lsd'); 
+    catch
+       
+        posthoc = multcompare(rm_auc, 'Models'); 
+        fprintf('Note: Default comparison used (Tukey-Kramer) as ''lsd'' failed.\n');
+    end
+    disp(posthoc);
+else
+    fprintf('No significant difference found at alpha=0.05.\n');
+end
+
+%% 6. Post-hoc tests and save it as Excel file
+report_name = fullfile(base_dir, 'Statistical_Analysis_Results_LSD.xlsx');
+
+if exist('posthoc', 'var')
+    statsTable = posthoc;
+  
+    model_A_names = model_names(statsTable.Models_1)';
+    model_B_names = model_names(statsTable.Models_2)';
+    
+    diff_rounded   = round(statsTable.Difference, 4);
+    stderr_rounded = round(statsTable.StdErr, 4);
+    p_rounded      = round(statsTable.pValue, 4);
+    lower_rounded  = round(statsTable.Lower, 4);
+    upper_rounded  = round(statsTable.Upper, 4);
+    
+    finalExcelTable = table(model_A_names, model_B_names, ...
+        diff_rounded, stderr_rounded, p_rounded, ...
+        lower_rounded, upper_rounded, ...
+        'VariableNames', {'Model_A', 'Model_B', 'Difference', 'StdErr', 'pValue_Raw', 'Lower_95CI', 'Upper_95CI'});
+
+    writetable(finalExcelTable, report_name, 'Sheet', 'PostHoc_AUC_Raw');
+    
+    try
+        excelApp = actxserver('Excel.Application');
+        workbook = excelApp.Workbooks.Open(report_name);
+        sheet = workbook.Sheets.Item('PostHoc_AUC_Raw');
+ 
+        sheet.Cells.Font.Name = 'Times New Roman';
+        sheet.Cells.Font.Size = 11;
+
+        dataRange = sheet.Range('C2:G7');
+        dataRange.NumberFormat = '0.0000';
+        
+        sheet.Columns.AutoFit;
+        sheet.Rows.Item(1).Font.Bold = true;
+        
+        workbook.Save;
+        workbook.Close;
+        excelApp.Quit;
+        fprintf('Excel: "%s" saved!\n', report_name);
+    catch
+        fprintf('Excel sheet not saved.\n');
+    end
+end
